@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#ece8de">
-  <meta name="description" content="СДВИГ — прогулка по Уфе, которую ты собираешь своими руками. Соединяй интересы нитями, выбирай реальные места и сохраняй маршрут.">
+  <meta name="description" content="СДВИГ — городская доска: связывай интересы красными нитями, открывай места Уфы и собирай свой маршрут.">
   <title>СДВИГ — собери свою Уфу</title>
   <link rel="stylesheet" href="styles.css">
   <script src="app.js" defer></script>
@@ -22,7 +22,7 @@
         <div class="intro-main">
           <span class="overline">ГОРОДСКАЯ МАСТЕРСКАЯ ПРОГУЛОК</span>
           <h1 id="hero-title">Не ищи маршрут.<br><em>Собери его.</em></h1>
-          <p>Выбери, что тебе интересно, и свяжи идеи красной нитью. Из этих связей появятся места, которые хочется увидеть в Уфе.</p>
+          <p>Связывай интересы красной нитью, меняй её смысл и наблюдай, как доска сама перестраивает места для твоей прогулки.</p>
         </div>
         <div class="how-paper" aria-label="Быстрый старт">
           <div class="paper-pin" aria-hidden="true"></div>
@@ -55,9 +55,20 @@
                     <span>Здесь появится новая тема — твоя собственная.</span>
                   </div>
                 </div>
+                <div class="discovery-layer" id="discoveries" aria-live="polite" hidden></div>
                 <div class="board-foot" id="board-foot" aria-live="polite">Все начинается с двух стикеров</div>
               </div>
             </div>
+            <div class="thread-editor" id="thread-editor" hidden aria-label="Что означает красная нить">
+              <div class="thread-editor-lead"><span class="thread-editor-kicker">О ЧЁМ ГОВОРИТ НИТЬ</span><strong>Одна связь — разные прогулки</strong></div>
+              <div class="relation-options" role="group" aria-label="Смысл связи">
+                <button data-relation="weave" type="button">В одной прогулке</button>
+                <button data-relation="sequence" type="button">По очереди</button>
+                <button data-relation="same" type="button">В одном месте</button>
+              </div>
+              <p class="relation-explain" id="relation-explain"></p>
+            </div>
+            <div class="prediction" id="prediction" aria-live="polite" hidden></div>
             <div class="controls" aria-label="Параметры подборки">
               <div class="control-caption">Моя прогулка</div>
               <div class="control-group" aria-label="Количество остановок">
