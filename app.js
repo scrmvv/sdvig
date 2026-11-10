@@ -1,18 +1,16 @@
-/* СДВИГ / 0.3. Конкурсный прототип: все места и значения условные.
- * Интерфейс не подключается к картам и не вычисляет реальную географическую доступность.
- */
+/* Примерные данные для интерактивного подбора прогулки. */
 'use strict';
 const TOPICS = [
-  {id:'nature',name:'Природа',num:'01',group:'ВОЗДУХ',color:'#56805a',x:16,y:25},
-  {id:'coffee',name:'Кофе',num:'02',group:'ПАУЗА',color:'#b3774c',x:38,y:16},
-  {id:'architecture',name:'Архитектура',num:'03',group:'ФОРМЫ',color:'#456d8a',x:65,y:17},
-  {id:'culture',name:'Культура',num:'04',group:'ИДЕИ',color:'#ad6c78',x:86,y:30},
-  {id:'history',name:'История',num:'05',group:'ПРОШЛОЕ',color:'#9a7937',x:83,y:68},
-  {id:'waterfront',name:'У воды',num:'06',group:'ПРОСТОР',color:'#397b91',x:63,y:82},
-  {id:'streetart',name:'Стрит-арт',num:'07',group:'ЦВЕТ',color:'#bb5b4c',x:37,y:81},
-  {id:'food',name:'Еда',num:'08',group:'ВКУС',color:'#a36c32',x:15,y:68},
-  {id:'quiet',name:'Тишина',num:'09',group:'НАСТРОЕНИЕ',color:'#64846a',x:25,y:48},
-  {id:'views',name:'Виды',num:'10',group:'ВПЕЧАТЛЕНИЯ',color:'#6467a4',x:75,y:49}
+  {id:'nature',name:'Природа',group:'ВОЗДУХ',color:'#56805a',x:16,y:25},
+  {id:'coffee',name:'Кофе',group:'ПАУЗА',color:'#b3774c',x:38,y:16},
+  {id:'architecture',name:'Архитектура',group:'ФОРМЫ',color:'#456d8a',x:65,y:17},
+  {id:'culture',name:'Культура',group:'ИДЕИ',color:'#ad6c78',x:86,y:30},
+  {id:'history',name:'История',group:'ПРОШЛОЕ',color:'#9a7937',x:83,y:68},
+  {id:'waterfront',name:'У воды',group:'ПРОСТОР',color:'#397b91',x:63,y:82},
+  {id:'streetart',name:'Стрит-арт',group:'ЦВЕТ',color:'#bb5b4c',x:37,y:81},
+  {id:'food',name:'Еда',group:'ВКУС',color:'#a36c32',x:15,y:68},
+  {id:'quiet',name:'Тишина',group:'НАСТРОЕНИЕ',color:'#64846a',x:25,y:48},
+  {id:'views',name:'Виды',group:'ВПЕЧАТЛЕНИЯ',color:'#6467a4',x:75,y:49}
 ];
 const SUGGESTED = [
   ['nature','coffee'],['architecture','history'],['coffee','food'],['culture','streetart'],
@@ -82,14 +80,12 @@ function toast(text){const el=$('toast');el.textContent=text;el.classList.add('v
 function setHint(){
   const hint=$('field-hint');
   if(!state.parts.length){
-    if(state.selected)hint.innerHTML=`<span class="hint-index">ПЕРВАЯ ТЕМА ВЫБРАНА</span><strong>${escapeHTML(name(state.selected))}</strong><span>Теперь нажми на другую тему — возникнет новый раздел</span>`;
-    else hint.innerHTML='<span class="hint-index">ПОДСКАЗКА 01</span><strong>Нажми на «Природу», затем на «Кофе»</strong><span>Или перетащи один объект на другой</span>';
+    if(state.selected)hint.innerHTML=`<strong>${escapeHTML(name(state.selected))} выбрана</strong><span>Нажми на другую тему, чтобы соединить их</span>`;
+    else hint.innerHTML='<strong>Нажми на две темы</strong><span>Или перетащи одну на другую</span>';
   } else {
-    hint.innerHTML=`<span class="hint-index">РАЗДЕЛ СОЗДАН</span><strong>${state.parts.length} ${state.parts.length===2?'интереса соединены':'темы в одном разделе'}</strong><span>Нажми на третью тему — раздел изменится. Нажми на уже выбранную — уберёшь её.</span>`;
+    hint.innerHTML=`<strong>${escapeHTML(title())}</strong><span>Добавь ещё тему или нажми на выбранную, чтобы убрать её</span>`;
   }
   $('central-placeholder').hidden=state.parts.length>0;
-  $('field-status').textContent=state.parts.length?`АКТИВНАЯ СВЯЗЬ · ${state.parts.map(name).join(' + ')}`:'10 ТЕМ · 45 ВОЗМОЖНЫХ СВЯЗЕЙ';
-  $('section-counter').textContent=state.parts.length?'СОЗДАН · 01':'НЕ СОЗДАН';
 }
 function createNode(t){
   const p=state.positions[t.id];const btn=document.createElement('button');
@@ -97,7 +93,7 @@ function createNode(t){
   btn.style.left=p.x+'%';btn.style.top=p.y+'%';btn.style.setProperty('--node-color',t.color);
   btn.setAttribute('aria-pressed',String(state.parts.includes(t.id)||state.selected===t.id));
   btn.setAttribute('aria-label',`Интерес: ${t.name}. ${state.parts.includes(t.id)?'Убрать из созданного раздела':'Выбрать для создания раздела'}`);
-  btn.innerHTML=`<span class="node-number">${t.num}</span><span class="node-title">${escapeHTML(t.name)}</span><span class="node-group">${escapeHTML(t.group)}</span>`;
+  btn.innerHTML=`<span class="node-title">${escapeHTML(t.name)}</span>`;
   let drag=null;
   btn.addEventListener('pointerdown',ev=>{
     if(ev.pointerType==='mouse'&&ev.button!==0)return;
@@ -192,7 +188,7 @@ function renderNodes(){
   const el=$('created-node');
   el.hidden=state.parts.length<2;
   if(state.parts.length>=2){
-    el.innerHTML=`<span class="created-label">НОВЫЙ РАЗДЕЛ / ${state.parts.length} ТЕМЫ</span><span class="created-title">${escapeHTML(title())}</span><span class="created-more">Нажми на любую тему, чтобы изменить этот раздел</span><button type="button" id="break-apart">Разъединить всё ↶</button>`;
+    el.innerHTML=`<span class="created-label">ТВОЯ СВЯЗЬ</span><span class="created-title">${escapeHTML(title())}</span><span class="created-more">Выбери ещё тему, чтобы изменить подборку</span><button type="button" id="break-apart">Разъединить всё ↶</button>`;
     $('break-apart').addEventListener('click',()=>{state.parts=[];state.selected=null;state.route=[];render();toast('Темы снова самостоятельны');});
   }
 }
@@ -207,11 +203,11 @@ function renderResults(){
   const el=$('result');
   if(state.parts.length<2){el.innerHTML=savedPreview;bindPreview();return;}
   const items=matches();
-  const buttons=items.map((p,i)=>{
+  const buttons=items.map(p=>{
     const added=state.route.includes(p.id);
-    return `<article class="place"><div class="place-top"><span class="place-number">${String(i+1).padStart(2,'0')}</span><div><div class="place-name">${escapeHTML(p.name)}</div><div class="place-desc">${escapeHTML(p.description)}</div></div></div><div class="place-meta"><span>${p.minutes} мин</span><span>≈ ${p.walk} мин между точками*</span><span>${p.price?p.price+' ₽':'Бесплатно'}</span></div><div class="place-action"><span class="place-match">${p.score}/${state.parts.length} совпадений</span><button type="button" data-add="${p.id}" class="${added?'added':''}">${added?'✓ В маршруте':'+ В маршрут'}</button></div></article>`;
+    return `<article class="place"><div class="place-top"><div><div class="place-name">${escapeHTML(p.name)}</div><div class="place-desc">${escapeHTML(p.description)}</div></div></div><div class="place-meta"><span>${p.minutes} мин</span><span>${p.price?p.price+' ₽':'Бесплатно'}</span></div><div class="place-action"><button type="button" data-add="${p.id}" class="${added?'added':''}">${added?'✓ В маршруте':'+ В маршрут'}</button></div></article>`;
   }).join('');
-  el.innerHTML=`<div class="result-overline">НОВЫЙ РАЗДЕЛ, СОЗДАННЫЙ ТОБОЙ</div><h2 class="result-title">${escapeHTML(title())}<span class="dot">.</span></h2><p class="result-description">${escapeHTML(description())}</p><div class="created-formula">${state.parts.map((id,i)=>`${i?'<b>+</b>':''}<span>${escapeHTML(name(id))}</span>`).join('')}</div><p class="result-hint">Теперь можно добавить третью тему — раздел и его содержимое изменятся. Ты не покидаешь пространство.</p><div class="matches-head"><strong>Подходящие остановки</strong><small>${items.length} из 26 демо-точек</small></div>${buttons||'<div class="no-matches">Для этих условий пока нет подходящих точек. Попробуй увеличить время или убрать ограничение.</div>'}<p class="preview-footnote">* Все названия, цены и время условные. Цифры не рассчитаны по реальной карте.</p>`;
+  el.innerHTML=`<h2 class="result-title">${escapeHTML(title())}<span class="dot">.</span></h2><p class="result-description">${escapeHTML(description())}</p><div class="created-formula">${state.parts.map((id,i)=>`${i?'<b>+</b>':''}<span>${escapeHTML(name(id))}</span>`).join('')}</div><p class="result-hint">Добавь ещё одну тему — и подборка изменится.</p><div class="matches-head"><strong>Подходящие остановки</strong><small>${items.length} ${items.length===1?'место':items.length<5?'места':'мест'}</small></div>${buttons||'<div class="no-matches">Для этих условий пока нет подходящих точек. Попробуй увеличить время или убрать ограничение.</div>'}<p class="preview-footnote">Места, цены и время приведены для примера.</p>`;
   el.querySelectorAll('[data-add]').forEach(b=>b.addEventListener('click',()=>togglePlace(b.dataset.add)));
 }
 function bindPreview(){const b=$('preview-cta');if(b)b.addEventListener('click',showExample);}
@@ -226,13 +222,13 @@ function togglePlace(id){
 function renderRoute(){
   const el=$('route');el.hidden=state.parts.length<2;if(state.parts.length<2)return;
   const chosen=state.route.map(id=>PLACES.find(p=>p.id===id)).filter(Boolean),total=chosen.reduce((s,p)=>s+p.minutes+p.walk,0),cost=chosen.reduce((s,p)=>s+p.price,0);
-  el.innerHTML=`<div class="route-title"><strong>Мой маршрут</strong><span>${chosen.length} остановок</span></div>${chosen.length?chosen.map((p,i)=>`<div class="route-item"><span>${i+1}. ${escapeHTML(p.name)}</span><button type="button" aria-label="Убрать ${escapeHTML(p.name)}" data-remove="${p.id}">×</button></div>`).join(''):'<p class="route-empty">Добавляй остановки выше: они соберутся здесь, без отдельной страницы.</p>'}<div class="route-total"><span>Условно ~${total} мин</span><span>${cost} ₽</span></div>${total>state.duration?'<p class="route-warning">Время остановок превышает выбранный лимит.</p>':''}<button class="export" id="export" type="button" ${chosen.length?'':'disabled'}>Сохранить маршрут · TXT ↗</button>`;
+  el.innerHTML=`<div class="route-title"><strong>Мой маршрут</strong><span>${chosen.length} остановок</span></div>${chosen.length?chosen.map((p,i)=>`<div class="route-item"><span>${i+1}. ${escapeHTML(p.name)}</span><button type="button" aria-label="Убрать ${escapeHTML(p.name)}" data-remove="${p.id}">×</button></div>`).join(''):'<p class="route-empty">Добавляй остановки выше: они соберутся здесь, без отдельной страницы.</p>'}<div class="route-total"><span>Примерно ${total} мин</span><span>${cost} ₽</span></div>${total>state.duration?'<p class="route-warning">Время остановок превышает выбранный лимит.</p>':''}<button class="export" id="export" type="button" ${chosen.length?'':'disabled'}>Скачать маршрут ↗</button>`;
   el.querySelectorAll('[data-remove]').forEach(b=>b.addEventListener('click',()=>togglePlace(b.dataset.remove)));
   $('export').addEventListener('click',exportRoute);
 }
 function exportRoute(){
   const chosen=state.route.map(id=>PLACES.find(p=>p.id===id)).filter(Boolean);if(!chosen.length)return;
-  const text=['СДВИГ — ПРОТОТИП 0.3','Демонстрационные, вымышленные места и значения.',`Раздел: ${title()}`,`Выбранные темы: ${state.parts.map(name).join(' + ')}`,`Время: ${state.duration/60} ч. Без шума: ${state.quiet?'да':'нет'}. До 500 ₽: ${state.budget?'да':'нет'}.`,'',...chosen.map((p,i)=>`${i+1}. ${p.name} — ${p.minutes} мин, ≈ ${p.walk} мин условного пути, ${p.price} ₽`),'','Маршрут не привязан к реальным координатам.'].join('\n');
+  const text=['СДВИГ — мой маршрут','Места и значения приведены для примера.',`Раздел: ${title()}`,`Выбранные темы: ${state.parts.map(name).join(' + ')}`,`Время: ${state.duration/60} ч. Без шума: ${state.quiet?'да':'нет'}. До 500 ₽: ${state.budget?'да':'нет'}.`,'',...chosen.map((p,i)=>`${i+1}. ${p.name} — ${p.minutes} мин, ≈ ${p.walk} мин условного пути, ${p.price} ₽`),'','Места и время условные.'].join('\n');
   const url=URL.createObjectURL(new Blob(['\uFEFF',text],{type:'text/plain;charset=utf-8'}));
   const a=document.createElement('a');a.href=url;a.download='СДВИГ-мой-маршрут.txt';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),5000);
   toast('Маршрут сохранён');
