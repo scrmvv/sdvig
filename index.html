@@ -22,19 +22,19 @@
         <div class="intro-main">
           <span class="overline">ГОРОДСКАЯ МАСТЕРСКАЯ ПРОГУЛОК</span>
           <h1 id="hero-title">Не ищи маршрут.<br><em>Собери его.</em></h1>
-          <p>Связывай интересы красной нитью, меняй её смысл и наблюдай, как доска сама перестраивает места для твоей прогулки.</p>
+          <p>Связывай интересы красной нитью или начни с понравившегося места. Доска раскроет новые направления, а ты выберешь свой путь.</p>
         </div>
         <div class="how-paper" aria-label="Быстрый старт">
           <div class="paper-pin" aria-hidden="true"></div>
           <span class="scribble">С чего начать?</span>
           <p><b>Природа</b> и <b>кофе</b> — хорошая пара для первой прогулки.</p>
-          <button id="start-example" class="start-example" type="button">Соединить эти идеи <span aria-hidden="true">↗</span></button>
+          <button id="start-example" class="start-example" type="button">Соединить эти идеи <span aria-hidden="true">↗</span></button><button id="start-from-place" class="start-from-place" type="button">Или начни с Арт-Квадрата ↗</button>
         </div>
       </section>
 
       <section class="work" aria-label="Конструктор прогулки">
         <div class="work-head">
-          <div class="work-headline"><h2>Твоя доска</h2><p>Нажми на два стикера. На компьютере их также можно соединить перетаскиванием.</p></div>
+          <div class="work-headline"><h2>Твоя доска</h2><p id="work-explainer">Нажми на два стикера. На компьютере их также можно соединить перетаскиванием.</p></div>
           <div class="work-help" aria-hidden="true"><span class="thread-swatch"></span> Красная нить = твоя связь</div>
         </div>
 
@@ -69,7 +69,7 @@
               <p class="relation-explain" id="relation-explain"></p>
             </div>
             <div class="prediction" id="prediction" aria-live="polite" hidden></div>
-            <div class="controls" aria-label="Параметры подборки">
+            <div class="controls" id="controls-panel" aria-label="Параметры подборки">
               <div class="control-caption">Моя прогулка</div>
               <div class="control-group" aria-label="Количество остановок">
                 <span>ОСТАНОВОК</span>
