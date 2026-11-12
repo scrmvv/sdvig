@@ -20,7 +20,6 @@
     <main id="top">
       <section class="intro" aria-labelledby="hero-title">
         <div class="intro-main">
-          <span class="overline">ГОРОДСКАЯ МАСТЕРСКАЯ ПРОГУЛОК</span>
           <h1 id="hero-title">Не ищи маршрут.<br><em>Собери его.</em></h1>
           <p>Связывай интересы красной нитью или начни с понравившегося места. Доска раскроет новые направления, а ты выберешь свой путь.</p>
         </div>
@@ -55,12 +54,24 @@
                     <span>Здесь появится новая тема — твоя собственная.</span>
                   </div>
                 </div>
+                <div class="attached-constraints" id="attached-constraints" aria-live="polite" hidden></div>
+                <div class="thread-tools" id="thread-tools" aria-label="Узлы красных нитей" hidden></div>
+                <div class="thread-popover" id="thread-popover" hidden></div>
                 <div class="discovery-layer" id="discoveries" aria-live="polite" hidden></div>
                 <div class="board-foot" id="board-foot" aria-live="polite">Все начинается с двух стикеров</div>
               </div>
             </div>
+            <div class="constraint-tray" id="constraint-tray" aria-label="Стикеры для изменения прогулки">
+              <div class="constraint-tray-title"><span>ЗАПИСКИ ДЛЯ ПРОГУЛКИ</span><p>Нажми на стикер или перетащи его на доску — маршрут подстроится.</p></div>
+              <div class="constraint-stickers" role="group" aria-label="Ограничения и настроение">
+                <button class="constraint-sticker" data-constraint="stops2" type="button" aria-pressed="false"><span class="constraint-pin" aria-hidden="true"></span><strong>2 остановки</strong><small>Короткий список</small></button>
+                <button class="constraint-sticker" data-constraint="stops3" type="button" aria-pressed="true"><span class="constraint-pin" aria-hidden="true"></span><strong>3 остановки</strong><small>В самый раз</small></button>
+                <button class="constraint-sticker" data-constraint="stops4" type="button" aria-pressed="false"><span class="constraint-pin" aria-hidden="true"></span><strong>4 остановки</strong><small>Больше открытий</small></button>
+                <button class="constraint-sticker constraint-slow" data-constraint="slow" type="button" aria-pressed="false"><span class="constraint-pin" aria-hidden="true"></span><strong>Без суеты</strong><small>Тихие места выше</small></button>
+              </div>
+            </div>
             <div class="thread-editor" id="thread-editor" hidden aria-label="Что означает красная нить">
-              <div class="thread-editor-lead"><span class="thread-editor-kicker">О ЧЁМ ГОВОРИТ НИТЬ</span><strong>Одна связь — разные прогулки</strong></div>
+              <div class="thread-editor-lead"><span class="thread-editor-kicker">СМЫСЛ ВСЕЙ СВЯЗКИ</span><strong>Одна связь — разные прогулки</strong></div>
               <div class="relation-options" role="group" aria-label="Смысл связи">
                 <button data-relation="weave" type="button">В одной прогулке</button>
                 <button data-relation="sequence" type="button">По очереди</button>
@@ -69,16 +80,6 @@
               <p class="relation-explain" id="relation-explain"></p>
             </div>
             <div class="prediction" id="prediction" aria-live="polite" hidden></div>
-            <div class="controls" id="controls-panel" aria-label="Параметры подборки">
-              <div class="control-caption">Моя прогулка</div>
-              <div class="control-group" aria-label="Количество остановок">
-                <span>ОСТАНОВОК</span>
-                <button type="button" data-limit="2" aria-pressed="false">2</button>
-                <button type="button" data-limit="3" aria-pressed="true" class="is-on">3</button>
-                <button type="button" data-limit="4" aria-pressed="false">4</button>
-              </div>
-              <div class="control-group" aria-label="Темп прогулки"><span>НАСТРОЕНИЕ</span><button id="slow-mode" type="button" aria-pressed="false">Без суеты</button></div>
-            </div>
           </div>
 
           <aside class="notebook" id="notebook" aria-label="Подборка мест и маршрут">

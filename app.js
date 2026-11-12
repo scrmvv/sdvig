@@ -1,5 +1,5 @@
 'use strict';
-/* СДВИГ v0.6: добавлена двусторонняя навигация от интересов к местам и от места к новым интересам. */
+/* СДВИГ v0.8: живые ограничения-стикеры и ровно центрированные узлы нитей. */
 const TOPICS = [
   {id:'nature',name:'Природа',caption:'зелёные места',paper:'#e6eccb',x:39,y:16,mx:82,my:10,angle:3},
   {id:'coffee',name:'Кофе',caption:'пауза в пути',paper:'#f5dcaf',x:17,y:18,mx:18,my:10,angle:-4},
@@ -48,7 +48,7 @@ const $=id=>document.getElementById(id);
 const byId=Object.fromEntries(TOPICS.map(t=>[t.id,t]));
 const isMobile=()=>window.matchMedia('(max-width:650px)').matches;
 const posDefault=()=>Object.fromEntries(TOPICS.map(t=>[t.id,{x:isMobile()?t.mx:t.x,y:isMobile()?t.my:t.y}]));
-const state={positions:posDefault(),selected:null,parts:[],route:[],limit:3,slow:false,relation:'weave',reverse:null};
+const state={positions:posDefault(),selected:null,parts:[],route:[],limit:3,slow:false,relation:'weave',reverse:null,threadMenu:null,threadUndo:null};
 let lastMobile=isMobile(),toastTimer,dragSuppress=false,prevPartsKey='';
 const RELATIONS={
  weave:{label:'В одной прогулке',help:'Подбираем разные места под все выбранные интересы — в одной прогулке.'},
@@ -66,8 +66,8 @@ function reverseCandidates(){
  return PLACES.filter(p=>p.id!==root.id&&(!r.focus||p.tags.includes(r.focus)))
   .map(p=>({...p,common:p.tags.filter(tag=>root.tags.includes(tag))}))
   .filter(p=>p.common.length>0)
-  .sort((a,b)=>b.common.length-a.common.length||a.name.localeCompare(b.name,'ru'))
-  .slice(0,5);
+  .sort((a,b)=>(b.common.length+(state.slow&&b.quiet?.35:0))-(a.common.length+(state.slow&&a.quiet?.35:0))||a.name.localeCompare(b.name,'ru'))
+  .slice(0,state.limit+1);
 }
 function openPlace(id){
  const next=placeById[id];if(!next)return;
@@ -75,7 +75,7 @@ function openPlace(id){
  if(prev?.root===id)return;
  const history=prev?[...prev.history,{root:prev.root,focus:prev.focus}]:[];
  state.reverse={root:id,focus:null,history};
- state.selected=null;
+ state.selected=null;state.threadMenu=null;
  render();toast('Теперь исследуем «'+next.name+'»');
  if(isMobile())$('board').scrollIntoView({behavior:motionBehavior(),block:'start'});
 }
@@ -167,6 +167,148 @@ function drawReverseThreads(){
  });
  svg.innerHTML=markup;
 }
+
+// Верёвочный узел — непосредственное управление связью на самой доске.
+// На ПК узел можно перетянуть к свободному стикеру; на мобильном — выбрать замену нажатием.
+let threadPointer=null,threadClickSuppressed=false;
+function snapshotThread(){
+ state.threadUndo={parts:[...state.parts],relation:state.relation,selected:state.selected};
+}
+function undoThread(){
+ const previous=state.threadUndo;if(!previous)return;
+ const current={parts:[...state.parts],relation:state.relation,selected:state.selected};
+ state.parts=[...previous.parts];state.relation=previous.relation;state.selected=previous.selected;
+ state.threadUndo=current;state.threadMenu=null;render();toast('Последнее изменение нити отменено');
+}
+function cutThread(id){
+ if(!state.parts.includes(id))return;
+ snapshotThread();state.parts=state.parts.filter(item=>item!==id);
+ if(state.parts.length<2){state.selected=state.parts[0]||null;state.parts=[];}
+ state.threadMenu=null;render();toast('Нить от «'+topicName(id)+'» отвязана. Маршрут сохранён.');
+}
+function clearAllThreads(){
+ if(!state.parts.length)return;
+ snapshotThread();state.parts=[];state.selected=null;state.threadMenu=null;
+ render();toast('Связка распущена. Остановки остались в маршруте.');
+}
+function rewireThread(fromId,toId){
+ if(fromId===toId)return;
+ if(state.parts.includes(toId)){toast('«'+topicName(toId)+'» уже соединена. Выбери свободный стикер.');return;}
+ if(!byId[toId]||!state.parts.includes(fromId))return;
+ snapshotThread();state.parts=state.parts.map(id=>id===fromId?toId:id);
+ state.threadMenu=null;state.selected=null;render();toast('Нить перенесена: «'+topicName(fromId)+'» → «'+topicName(toId)+'»');
+}
+function setThreadRelation(mode){
+ if(!RELATIONS[mode]||mode===state.relation)return;
+ snapshotThread();state.relation=mode;render();toast('Нить теперь означает: '+RELATIONS[mode].label.toLowerCase());
+}
+function nearestUnconnectedTopic(x,y,fromId){
+ let match=null,dist=Infinity;
+ $('notes').querySelectorAll('[data-id]').forEach(node=>{
+  const id=node.dataset.id;
+  if(id===fromId||state.parts.includes(id))return;
+  const r=node.getBoundingClientRect(),d=Math.hypot(x-r.left-r.width/2,y-r.top-r.height/2);
+  if(d<Math.max(84,Math.min(115,r.width*.83))&&d<dist){match=id;dist=d;}
+ });
+ return match;
+}
+function openThreadMenu(id){
+ if(!state.parts.includes(id))return;
+ state.threadMenu=state.threadMenu===id?null:id;
+ renderThreadControls();
+ if(isMobile()&&state.threadMenu)requestAnimationFrame(()=>$('thread-popover').scrollIntoView({behavior:motionBehavior(),block:'center'}));
+}
+function renderThreadControls(){
+ const layer=$('thread-tools'),popover=$('thread-popover'),board=$('board');
+ if(threadPointer?.moved)return; // Не снимать pointer capture у перетаскиваемого узла.
+ if(state.reverse||state.parts.length<2){layer.hidden=true;layer.replaceChildren();popover.hidden=true;popover.replaceChildren();return;}
+ layer.hidden=false;
+ const br=board.getBoundingClientRect();
+ const cr=$('central-card').getBoundingClientRect();
+ const cx=cr.left-br.left+cr.width/2,cy=cr.top-br.top+cr.height/2;
+ const points={};
+ layer.replaceChildren(...state.parts.map(id=>{
+  const node=$('notes').querySelector(`[data-id="${id}"]`),r=node?.getBoundingClientRect();
+  if(!r)return document.createElement('span');
+  const x=r.left-br.left+r.width/2,y=r.top-br.top+r.height/2;
+  const knot={x:x+(cx-x)*.49,y:y+(cy-y)*.49};points[id]=knot;
+  const button=document.createElement('button');button.type='button';
+  button.className='thread-knot'+(state.threadMenu===id?' is-open':'');
+  button.dataset.knot=id;
+  button.setAttribute('aria-label','Нить от «'+topicName(id)+'»: изменить смысл, перетянуть или отвязать');
+  button.setAttribute('aria-expanded',String(state.threadMenu===id));
+  button.setAttribute('aria-controls','thread-popover');
+  button.setAttribute('title','Нажми для управления · перетащи на другой стикер');
+  button.style.left=knot.x+'px';button.style.top=knot.y+'px';
+  button.innerHTML=`<span class="knot-core" aria-hidden="true"></span><span class="knot-name">${safe(topicName(id))}</span>`;
+  button.addEventListener('click',()=>{if(threadClickSuppressed)return;openThreadMenu(id);});
+  button.addEventListener('pointerdown',ev=>{
+   if(isMobile()||ev.button!==0)return;
+   threadPointer={id,pointerId:ev.pointerId,sx:ev.clientX,sy:ev.clientY,moved:false,button};
+   try{button.setPointerCapture(ev.pointerId);}catch{}
+  });
+  button.addEventListener('pointermove',ev=>{
+   const d=threadPointer;if(!d||d.pointerId!==ev.pointerId||d.button!==button)return;
+   if(!d.moved&&Math.hypot(ev.clientX-d.sx,ev.clientY-d.sy)<8)return;
+   d.moved=true;button.classList.add('is-moving');
+   const b=board.getBoundingClientRect(),x=ev.clientX-b.left,y=ev.clientY-b.top;
+   button.style.left=x+'px';button.style.top=y+'px';
+   const svg=$('threads');let preview=svg.querySelector('#thread-preview');
+   if(!preview){preview=document.createElementNS('http://www.w3.org/2000/svg','path');preview.id='thread-preview';preview.setAttribute('class','thread-preview');svg.appendChild(preview);}
+   preview.setAttribute('d',`M ${cx} ${cy} Q ${(cx+x)/2} ${(cy+y)/2-17} ${x} ${y}`);
+   const match=nearestUnconnectedTopic(ev.clientX,ev.clientY,id);
+   $('notes').querySelectorAll('[data-id]').forEach(n=>n.classList.toggle('is-target',n.dataset.id===match));
+  });
+  const finish=ev=>{
+   const d=threadPointer;if(!d||d.pointerId!==ev.pointerId||d.button!==button)return;
+   threadPointer=null;
+   if(!d.moved)return;
+   threadClickSuppressed=true;
+   const target=nearestUnconnectedTopic(ev.clientX,ev.clientY,id);
+   $('notes').querySelectorAll('.is-target').forEach(n=>n.classList.remove('is-target'));
+   $('threads').querySelector('#thread-preview')?.remove();
+   if(target){rewireThread(id,target);}else{renderThreadControls();toast('Перетяни узел на свободный стикер, чтобы заменить интерес');}
+   setTimeout(()=>{threadClickSuppressed=false;},0);
+  };
+  button.addEventListener('pointerup',finish);
+  button.addEventListener('pointercancel',ev=>{if(threadPointer?.pointerId===ev.pointerId){threadPointer=null;$('threads').querySelector('#thread-preview')?.remove();renderThreadControls();}});
+  return button;
+ }));
+ const id=state.threadMenu;
+ if(!id||!state.parts.includes(id)){popover.hidden=true;popover.replaceChildren();popover.dataset.signature='';return;}
+ popover.hidden=false;
+ popover.setAttribute('role','group');popover.setAttribute('aria-label','Управление нитью от '+topicName(id));
+ const options=TOPICS.filter(t=>!state.parts.includes(t.id));
+ const signature=[id,state.relation,state.parts.join(','),Boolean(state.threadUndo)].join('|');
+ if(popover.dataset.signature!==signature || !popover.childElementCount){
+  popover.dataset.signature=signature;
+  popover.innerHTML=`<div class="thread-popup-top"><div><span class="thread-popup-label">УЗЕЛ НИТИ</span><strong>${safe(topicName(id))}</strong></div><button class="thread-popup-close" type="button" aria-label="Закрыть управление нитью">×</button></div>
+ <p class="thread-popup-hint">Измени связь или перенеси её к другой теме. Твои остановки не исчезнут.</p>
+ <span class="thread-popup-label">ЧТО ЗНАЧИТ ВСЯ СВЯЗКА</span>
+ <div class="thread-popup-modes">${Object.entries(RELATIONS).map(([mode,info])=>`<button type="button" class="${mode===state.relation?'is-current':''}" data-thread-mode="${mode}" aria-pressed="${mode===state.relation}">${safe(info.label)}</button>`).join('')}</div>
+ <span class="thread-popup-label">ПЕРЕВЕСТИ НИТЬ НА</span>
+ <div class="thread-popup-rewire"><select id="thread-rewire-select" aria-label="Другая тема">${options.map(t=>`<option value="${t.id}">${safe(t.name)}</option>`).join('')}</select><button id="thread-rewire-go" type="button" ${options.length?'':'disabled'}>Перенести ↗</button></div>
+ <div class="thread-popup-bottom"><button id="thread-cut" type="button">✂ Отвязать «${safe(topicName(id))}»</button><button id="thread-undo" type="button" ${state.threadUndo?'':'disabled'}>↶ Отменить</button></div>`;
+ popover.querySelector('.thread-popup-close').addEventListener('click',()=>{state.threadMenu=null;renderThreadControls();layer.querySelector(`[data-knot="${id}"]`)?.focus({preventScroll:true});});
+ popover.querySelectorAll('[data-thread-mode]').forEach(b=>b.addEventListener('click',()=>setThreadRelation(b.dataset.threadMode)));
+ popover.querySelector('#thread-rewire-go').addEventListener('click',()=>rewireThread(id,popover.querySelector('#thread-rewire-select').value));
+ popover.querySelector('#thread-cut').addEventListener('click',()=>cutThread(id));
+ popover.querySelector('#thread-undo').addEventListener('click',undoThread);
+ }
+ if(!isMobile()){
+  const p=points[id],width=Math.min(307,br.width-16),h=285;
+  const x=p.x>br.width*.53?p.x-width-13:p.x+20;
+  const y=Math.min(Math.max(8,p.y-80),Math.max(8,br.height-h-10));
+  popover.style.left=Math.max(8,Math.min(br.width-width-8,x))+'px';
+  popover.style.top=y+'px';
+ }else{popover.style.left='';popover.style.top='';}
+}
+document.addEventListener('keydown',ev=>{
+ if(ev.key==='Escape'&&state.threadMenu){const id=state.threadMenu;state.threadMenu=null;renderThreadControls();$('thread-tools').querySelector(`[data-knot="${id}"]`)?.focus({preventScroll:true});}
+});
+document.addEventListener('pointerdown',ev=>{
+ if(state.threadMenu&&!ev.target.closest('.thread-knot,.thread-popover')&&(!ev.target.closest('.thread-editor'))){state.threadMenu=null;renderThreadControls();}
+});
 
 function safe(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function topicName(id){return byId[id]?.name||'';}
@@ -285,11 +427,11 @@ function pick(id){
  if(state.parts.length>=2){
   if(state.parts.includes(id)){
    state.parts=state.parts.filter(v=>v!==id);
-   if(state.parts.length<2){state.parts=[];state.route=[];}
-   state.selected=null;render();toast('Связь изменилась');return;
+   if(state.parts.length<2){state.selected=state.parts[0]||null;state.parts=[];}
+   state.threadMenu=null;render();toast('Связь изменилась');return;
   }
   if(state.parts.length>=4){toast('В одной связи может быть до четырёх идей');return;}
-  state.parts.push(id);state.selected=null;render();toast('Добавили «'+topicName(id)+'» — подборка изменилась');return;
+  state.parts.push(id);state.selected=null;state.threadMenu=null;render();toast('Добавили «'+topicName(id)+'» — подборка изменилась');return;
  }
  if(state.selected===id){state.selected=null;renderNotes();renderPrediction();return;}
  if(state.selected){combine(state.selected,id);return;}
@@ -299,7 +441,7 @@ function combine(a,b){
  if(a===b){pick(a);return;}
  if(!state.parts.length){state.parts=[a,b];state.route=[];}
  else{state.parts=[...new Set([...state.parts,a,b])].slice(0,4);}
- state.selected=null;render();toast('Новая связь: '+title());
+ state.selected=null;state.threadMenu=null;render();toast('Новая связь: '+title());
  if(isMobile())setTimeout(()=>$('central-card').scrollIntoView({behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'center'}),180);
 }
 function drawThreads(){
@@ -345,12 +487,13 @@ function renderCentral(){
  if(state.parts.length<2){
   const guess=state.selected?bestNext():null;
   el.innerHTML=guess?`<div class="central-pin" aria-hidden="true"></div><div class="central-empty"><span class="central-overline">УЖЕ ЕСТЬ ИДЕЯ</span><strong>${safe(topicName(state.selected))}<br><em style="font-size:.76em;color:#9d453a;font-weight:400">+ ${safe(topicName(guess.id))}?</em></strong><span>${safe(guessText(guess))}</span><div class="central-recommend"><button id="central-guess" type="button">Соединить эти идеи ↗</button></div></div>`:`<div class="central-pin" aria-hidden="true"></div><div class="central-empty"><span class="central-overline">ТВОЯ ПЕРВАЯ СВЯЗЬ</span><strong>Соедини две<br>идеи</strong><span>Здесь появится новая тема — твоя собственная.</span></div>`;
+  if(state.threadUndo){const undo=document.createElement('button');undo.type='button';undo.className='empty-undo';undo.textContent='↶ Вернуть последнюю нить';undo.addEventListener('click',undoThread);el.appendChild(undo);}
   if(guess)$('central-guess').addEventListener('click',()=>pick(guess.id));
   $('board-foot').textContent=state.selected?'Выбрано: '+topicName(state.selected)+'. Теперь вторая идея.':'Все начинается с двух стикеров';return;
  }
  el.innerHTML=`<div class="central-pin" aria-hidden="true"></div><span class="fusion-overline">НОВАЯ ТЕМА</span><div class="fusion-title">${safe(title())}</div><div class="fusion-combo">${state.parts.map((id,i)=>`${i?'<b>+</b>':''}<span>${safe(topicName(id))}</span>`).join('')}</div><button id="break-connection" type="button" class="fusion-remove">Разъединить нить ↶</button>`;
- $('break-connection').addEventListener('click',()=>{state.parts=[];state.selected=null;state.route=[];render();toast('Нити убраны');});
- $('board-foot').textContent='Добавь к связи ещё одну тему — подборка изменится';
+ $('break-connection').addEventListener('click',clearAllThreads);
+ $('board-foot').textContent='Управляй нитями за красные узелки или добавь новую тему';
 }
 function suggestions(){
  if(state.parts.length<2)return [];
@@ -359,16 +502,16 @@ function suggestions(){
   return {...p,hits,score:hits.length*12+(state.slow&&p.quiet?6:0)};
  }).filter(p=>p.hits.length>0);
  if(state.relation==='same'){
-  return base.filter(p=>p.hits.length>=2).sort((a,b)=>b.score-a.score||a.name.localeCompare(b.name,'ru')).slice(0,6);
+  return base.filter(p=>p.hits.length>=2).sort((a,b)=>b.score-a.score||a.name.localeCompare(b.name,'ru')).slice(0,state.limit+1);
  }
  if(state.relation==='sequence'){
-  const result=[],remaining=[...base];
+  const result=[],remaining=[...base].sort((a,b)=>b.score-a.score||a.name.localeCompare(b.name,'ru'));
   for(let round=0;round<3;round++){
    for(const id of state.parts){
     const idx=remaining.findIndex(p=>p.hits.includes(id)&&(!result.length||!p.hits.includes(result[result.length-1]?.primary)));
     const pickIdx=idx>=0?idx:remaining.findIndex(p=>p.hits.includes(id));
     if(pickIdx>=0){const [item]=remaining.splice(pickIdx,1);result.push({...item,primary:id});}
-    if(result.length>=6)return result;
+    if(result.length>=state.limit+1)return result;
    }
   }
   return result;
@@ -376,8 +519,8 @@ function suggestions(){
  base.sort((a,b)=>b.score-a.score||a.name.localeCompare(b.name,'ru'));
  const chosen=[];
  for(const id of state.parts){const next=base.find(p=>p.hits.includes(id)&&!chosen.some(x=>x.id===p.id));if(next)chosen.push(next);}
- for(const p of base){if(chosen.length>=6)break;if(!chosen.some(x=>x.id===p.id))chosen.push(p);}
- return chosen.slice(0,6);
+ for(const p of base){if(chosen.length>=state.limit+1)break;if(!chosen.some(x=>x.id===p.id))chosen.push(p);}
+ return chosen.slice(0,state.limit+1);
 }
 function renderDiscoveries(){
  if(state.reverse){renderReverseDiscoveries();return;}
@@ -386,7 +529,7 @@ function renderDiscoveries(){
  board.classList.toggle('is-exploring',active);
  el.hidden=!active;
  if(!active){el.replaceChildren();return;}
- const candidates=suggestions().slice(0,3);
+ const candidates=suggestions().slice(0,Math.min(state.limit,3));
  el.innerHTML=`<span class="discovery-label">МЕСТА, КОТОРЫЕ ПОЯВИЛИСЬ ИЗ СВЯЗИ</span><div class="discovery-slips">${candidates.map((p,i)=>`<button class="discovery-slip${state.route.includes(p.id)?' is-pinned':''}" type="button" data-pinplace="${p.id}" title="${safe(p.address)}"><span class="slip-pin" aria-hidden="true"></span><span class="slip-name">${safe(p.name)}</span><span class="slip-action">${state.route.includes(p.id)?'В маршруте ✓':'Прикрепить ↗'}</span></button>`).join('')||'<span class="discovery-empty">Совпадений в одном месте пока нет.<button type="button" id="switch-to-weave">Собрать в одной прогулке ↗</button></span>'}</div>`;
  el.querySelectorAll('[data-pinplace]').forEach(b=>b.addEventListener('click',()=>togglePlace(b.dataset.pinplace)));
  el.querySelector('#switch-to-weave')?.addEventListener('click',()=>{state.relation='weave';render();});
@@ -414,7 +557,7 @@ function renderRoute(){
  const el=$('route');el.hidden=state.parts.length<2&&!state.reverse&&!state.route.length;
  if(el.hidden)return;
  const chosen=state.route.map(id=>PLACES.find(p=>p.id===id)).filter(Boolean);
- el.innerHTML=`<div class="route-head"><h3>Твой маршрут</h3><span>${chosen.length} из ${state.limit}</span></div>${chosen.length?`<ol class="route-list">${chosen.map((p,i)=>`<li class="route-stop"><span class="route-bullet">${i+1}.</span><span class="route-stop-name">${safe(p.name)}</span><button type="button" data-remove="${p.id}" aria-label="Убрать ${safe(p.name)} из маршрута">×</button></li>`).join('')}</ol>`:'<p class="route-empty">Прикрепляй места выше. Они останутся здесь, даже если поменяешь интересы на доске.</p>'}<div class="route-actions"><button type="button" id="save-route" ${chosen.length?'':'disabled'}>Скачать маршрут ↗</button><button type="button" id="copy-route" class="outline" ${chosen.length?'':'disabled'}>Копировать</button></div>`;
+ el.innerHTML=`<div class="route-head"><h3>Твой маршрут</h3><span>${chosen.length} из ${state.limit}${chosen.length>state.limit?' · убери лишние':''}</span></div>${chosen.length?`<ol class="route-list">${chosen.map((p,i)=>`<li class="route-stop"><span class="route-bullet">${i+1}.</span><span class="route-stop-name">${safe(p.name)}</span><button type="button" data-remove="${p.id}" aria-label="Убрать ${safe(p.name)} из маршрута">×</button></li>`).join('')}</ol>${chosen.length>state.limit?'<p class="route-limit-warning">Выбранных мест больше нового лимита. Убери лишние остановки — остальные останутся на месте.</p>':''}`:'<p class="route-empty">Прикрепляй места выше. Они останутся здесь, даже если поменяешь интересы на доске.</p>'}<div class="route-actions"><button type="button" id="save-route" ${chosen.length?'':'disabled'}>Скачать маршрут ↗</button><button type="button" id="copy-route" class="outline" ${chosen.length?'':'disabled'}>Копировать</button></div>`;
  el.querySelectorAll('[data-remove]').forEach(b=>b.addEventListener('click',()=>togglePlace(b.dataset.remove)));
  $('save-route').addEventListener('click',saveRoute);$('copy-route').addEventListener('click',copyRoute);
 }
@@ -429,31 +572,97 @@ async function copyRoute(){
   const input=document.createElement('textarea');input.value=routeText();input.style.position='fixed';input.style.opacity='0';document.body.appendChild(input);input.select();if(!document.execCommand('copy'))throw new Error('copy failed');input.remove();
  }toast('Маршрут скопирован');}catch{toast('Не удалось скопировать. Скачай маршрут файлом.');}
 }
-function renderControls(){
- $('controls-panel').hidden=!!state.reverse;
- document.querySelectorAll('[data-limit]').forEach(b=>{const on=Number(b.dataset.limit)===state.limit;b.classList.toggle('is-on',on);b.setAttribute('aria-pressed',String(on));});
- $('slow-mode').classList.toggle('is-on',state.slow);$('slow-mode').setAttribute('aria-pressed',String(state.slow));
+// Бумажные ограничения — часть той же доски, а не отдельные фильтры.
+function applyConstraint(id){
+ if(id==='slow'){
+  state.slow=!state.slow;
+  toast(state.slow?'Тихие места подняты в подборке':'Показаны разные места');
+ }else{
+  const next=Number(id.replace('stops',''));
+  if(![2,3,4].includes(next))return;
+  state.limit=next;
+  toast(state.route.length>next
+   ?'Маршрут сохранён. Убери '+(state.route.length-next)+' остановку(и), чтобы уложиться в новое ограничение.'
+   :'Теперь в подборке '+next+' остановки — и ещё один вариант на выбор');
+ }
+ render();
+}
+function renderConstraints(){
+ const active=state.parts.length>=2||!!state.reverse;
+ const attached=$('attached-constraints');
+ attached.hidden=!active;
+ $('constraint-tray').classList.toggle('has-active-route',active);
+ document.querySelectorAll('[data-constraint]').forEach(button=>{
+  const key=button.dataset.constraint;
+  const selected=key==='slow'?state.slow:Number(key.replace('stops',''))===state.limit;
+  button.classList.toggle('is-applied',selected);
+  button.setAttribute('aria-pressed',String(selected));
+ });
+ if(!active){attached.replaceChildren();return;}
+ attached.innerHTML=`<span class="attached-head">ПРИКРЕПЛЕНО К МАРШРУТУ</span><div class="attached-list"><span class="attached-tag">${state.limit} остановки</span>${state.slow?'<span class="attached-tag quiet-tag">Без суеты</span>':''}</div>`;
+}
+// Перетаскивание на ПК; на телефоне достаточно касания.
+function initConstraintStickers(){
+ document.querySelectorAll('[data-constraint]').forEach(button=>{
+  let drag=null,suppressClick=false;
+  button.addEventListener('pointerdown',e=>{
+   if(e.pointerType==='touch'||(e.pointerType==='mouse'&&e.button!==0))return;
+   drag={id:e.pointerId,originX:e.clientX,originY:e.clientY,ghost:null,moved:false};
+   try{button.setPointerCapture(e.pointerId);}catch{}
+  });
+  button.addEventListener('pointermove',e=>{
+   if(!drag||drag.id!==e.pointerId)return;
+   if(!drag.moved&&Math.hypot(e.clientX-drag.originX,e.clientY-drag.originY)<8)return;
+   if(!drag.moved){
+    drag.moved=true;
+    drag.ghost=button.cloneNode(true);
+    drag.ghost.classList.add('constraint-ghost');
+    drag.ghost.removeAttribute('id');
+    drag.ghost.setAttribute('aria-hidden','true');
+    document.body.appendChild(drag.ghost);
+    $('board').classList.add('accepting-constraint');
+   }
+   drag.ghost.style.left=e.clientX+'px';drag.ghost.style.top=e.clientY+'px';
+   const r=$('board').getBoundingClientRect();
+   $('board').classList.toggle('over-constraint',e.clientX>=r.left&&e.clientX<=r.right&&e.clientY>=r.top&&e.clientY<=r.bottom);
+  });
+  function finish(e,cancel){
+   if(!drag||drag.id!==e.pointerId)return;
+   const moved=drag.moved;
+   drag.ghost?.remove();drag=null;
+   $('board').classList.remove('accepting-constraint','over-constraint');
+   if(!moved||cancel)return;
+   suppressClick=true;
+   const r=$('board').getBoundingClientRect();
+   const inside=e.clientX>=r.left&&e.clientX<=r.right&&e.clientY>=r.top&&e.clientY<=r.bottom;
+   if(inside)applyConstraint(button.dataset.constraint);
+   else toast('Перетащи стикер на пробковую доску или нажми на него');
+   setTimeout(()=>{suppressClick=false;},0);
+  }
+  button.addEventListener('pointerup',e=>finish(e,false));
+  button.addEventListener('pointercancel',e=>finish(e,true));
+  button.addEventListener('click',()=>{if(!suppressClick)applyConstraint(button.dataset.constraint);});
+ });
 }
 function updateMobileUI(){
  const guide=$('mobile-guidance'),go=$('mobile-go-results');
  go.disabled=state.parts.length<2&&!state.reverse;
  if(state.reverse){guide.textContent='Выбери тему вокруг места, затем коснись нового места, чтобы продолжить исследование.';return;}
- if(state.parts.length>=2)guide.textContent='Нить соединена. Коснись ещё одного стикера, чтобы дополнить прогулку.';
+ if(state.parts.length>=2)guide.textContent='Нить соединена. Ниже появятся узлы: нажми на нужный, чтобы изменить или разорвать связь.';
  else if(state.selected){const g=bestNext();guide.innerHTML='Выбрано «'+safe(topicName(state.selected))+'». Можно дополнить <button class="guidance-button" type="button" id="guide-next">«'+safe(topicName(g.id))+'» ↗</button>';guide.querySelector('#guide-next').addEventListener('click',()=>pick(g.id));}
  else guide.textContent='Коснись двух стикеров — они соединятся красной нитью.';
 }
-function render(){$('work-explainer').textContent=state.reverse?'Начни с места, выбери связанную с ним тему и открой следующий объект.':'Нажми на два стикера. На компьютере их также можно соединить перетаскиванием.';renderNotes();renderRelation();renderDiscoveries();renderPrediction();renderResults();renderRoute();renderControls();updateMobileUI();requestAnimationFrame(drawThreads);setTimeout(drawThreads,540);}
+function render(){$('work-explainer').textContent=state.reverse?'Начни с места, выбери связанную с ним тему и открой следующий объект.':state.parts.length>=2?'Нажми на красный узел нити: её можно изменить, разорвать или перетянуть к другой теме.':'Нажми на два стикера. На компьютере их также можно соединить перетаскиванием.';renderNotes();renderRelation();renderDiscoveries();renderPrediction();renderResults();renderRoute();renderConstraints();updateMobileUI();requestAnimationFrame(()=>{drawThreads();renderThreadControls();});setTimeout(()=>{drawThreads();renderThreadControls();},540);}
 
-function example(){state.parts=['nature','coffee'];state.selected=null;state.route=[];state.relation='weave';state.positions=posDefault();render();toast('Природа и кофе связаны красной нитью');if(isMobile())setTimeout(()=>$('central-card').scrollIntoView({behavior:'smooth',block:'center'}),100);}
-function reset(){state.reverse=null;state.parts=[];state.selected=null;state.route=[];state.positions=posDefault();state.limit=3;state.slow=false;state.relation='weave';render();toast('Доска очищена');}
-document.querySelectorAll('[data-relation]').forEach(b=>b.addEventListener('click',()=>{state.relation=b.dataset.relation;render();toast('Нить: '+RELATIONS[state.relation].label);}));
+function example(){state.reverse=null;state.parts=['nature','coffee'];state.selected=null;state.threadMenu=null;state.threadUndo=null;state.route=[];state.relation='weave';state.positions=posDefault();render();toast('Природа и кофе связаны красной нитью');if(isMobile())setTimeout(()=>$('central-card').scrollIntoView({behavior:'smooth',block:'center'}),100);}
+function reset(){state.reverse=null;state.parts=[];state.selected=null;state.threadMenu=null;state.threadUndo=null;state.route=[];state.positions=posDefault();state.limit=3;state.slow=false;state.relation='weave';render();toast('Доска очищена');}
+document.querySelectorAll('[data-relation]').forEach(b=>b.addEventListener('click',()=>setThreadRelation(b.dataset.relation)));
 $('start-example').addEventListener('click',example);
 $('start-from-place').addEventListener('click',()=>openPlace('art'));
 $('reset-all').addEventListener('click',reset);
 $('mobile-go-board').addEventListener('click',()=>{$('board').scrollIntoView({behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'start'});});
 $('mobile-go-results').addEventListener('click',()=>{if(state.parts.length>=2||state.reverse)$('notebook').scrollIntoView({behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'start'});});
-document.querySelectorAll('[data-limit]').forEach(b=>b.addEventListener('click',()=>{state.limit=Number(b.dataset.limit);if(state.route.length>state.limit){state.route=state.route.slice(0,state.limit);toast('Лишние остановки убраны');}renderControls();renderRoute();}));
-$('slow-mode').addEventListener('click',()=>{state.slow=!state.slow;renderControls();renderResults();renderDiscoveries();toast(state.slow?'Спокойные места выше в подборке':'Показаны разные варианты');});
-if('ResizeObserver' in window)new ResizeObserver(()=>drawThreads()).observe($('board'));else window.addEventListener('resize',drawThreads);
+initConstraintStickers();
+if('ResizeObserver' in window)new ResizeObserver(()=>{drawThreads();renderThreadControls();}).observe($('board'));else window.addEventListener('resize',()=>{drawThreads();renderThreadControls();});
 window.addEventListener('resize',()=>{const n=isMobile();if(n!==lastMobile){lastMobile=n;state.positions=posDefault();render();}});
 render();
